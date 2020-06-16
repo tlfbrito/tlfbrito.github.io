@@ -31,7 +31,7 @@ class BlogPostTemplate extends React.Component {
     const languageLink = createLanguageLink(slug, lang);
     const enSlug = languageLink('en');
     const discussUrl = `https://mobile.twitter.com/search?q=${encodeURIComponent(
-      `https://uniplaces.dev${enSlug}`
+      `https://tlfbrito.github.io${enSlug}`
     )}`;
 
     return (
@@ -111,7 +111,7 @@ class BlogPostTemplate extends React.Component {
               }}
               to={'/'}
             >
-              Uniplaces
+              Blog
             </Link>
           </h3>
           <Bio />

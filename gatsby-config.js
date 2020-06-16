@@ -1,11 +1,11 @@
 module.exports = {
   siteMetadata: {
-    title: 'Uniplaces',
-    author: 'Uniplaces',
-    description: 'Uniplaces | Product Releases Blog',
-    siteUrl: 'https://uniplaces.dev',
+    title: 'Tiago Brito',
+    author: 'Tiago Brito',
+    description: 'Tiago Brito | Personal blog',
+    siteUrl: 'https://tlfbrito.github.io',
     social: {
-      twitter: '@uniplaces',
+      twitter: '@tlfbrito',
     },
   },
   pathPrefix: '/',
@@ -82,7 +82,7 @@ module.exports = {
               return allMarkdownRemark.edges.map(edge => {
                 const siteUrl = site.siteMetadata.siteUrl;
                 const postText = `
-                <div style="margin-top=55px; font-style: italic;">(This is an article from www.uniplaces.dev . You can read it online by <a href="${siteUrl +
+                <div style="margin-top=55px; font-style: italic;">(This is an article from www.tlfbrito.github.io . You can read it online by <a href="${siteUrl +
                   edge.node.fields.slug}">clicking here</a>.)</div>
               `;
 
@@ -127,7 +127,7 @@ module.exports = {
               }
             `,
             output: '/rss.xml',
-            title: 'Uniplaces | Product Blog RSS Feed',
+            title: 'Tiago Brito | Personal blog',
           },
         ],
       },
@@ -135,13 +135,13 @@ module.exports = {
     {
       resolve: `gatsby-plugin-manifest`,
       options: {
-        name: `Uniplaces`,
-        short_name: `Uniplaces`,
+        name: `Tiago Brito`,
+        short_name: `tlfbrito`,
         start_url: `/`,
         background_color: `#ffffff`,
-        theme_color: `#ffa7c4`,
+        theme_color: `#000000`,
         display: `minimal-ui`,
-        icon: `src/assets/icon.png`,
+        //icon: `src/assets/icon.png`,
         theme_color_in_head: false,
       },
     },
