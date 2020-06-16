@@ -8,7 +8,7 @@ module.exports = {
       twitter: '@tlfbrito',
     },
   },
-  pathPrefix: '/',
+  pathPrefix: '/tlfbrito.github.io',
   plugins: [
     {
       resolve: `gatsby-source-filesystem`,
