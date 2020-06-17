@@ -1,7 +1,9 @@
 ---
 title: DynamoDb OnDemand Hydrator
 date: '2017-01-27'
-spoiler: DynamoDB is NoSQL and distributed database from Amazon webservices that automatically spreads the data and traffic for the table over a sufficient number of servers to handle the request capacity specified by the customer and the amount of data stored.
+spoiler: At Uniplaces we use a DynamoDB as our main database. DynamoDB is NoSQL and distributed database from Amazon webservices 
+    that automatically spreads the data and traffic for the table over a sufficient number of servers to handle the request 
+    capacity specified by the customer and the amount of data stored, while maintaining consistent and fast performance.
 tags:
   - AWS
   - Cloud

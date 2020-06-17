@@ -1,12 +1,12 @@
 ---
 title: 3 years at Uniplaces… and still counting!
 date: '2019-11-29'
-spoiler: DynamoDB is NoSQL and distributed database from Amazon webservices that automatically spreads the data and traffic for the table over a sufficient number of servers to handle the request capacity specified by the customer and the amount of data stored.
+spoiler: Next year I’m celebrating 4 years at Uniplaces. I had 3 long, long years that represent an amazing journey in my life.
 tags:
-  - AWS
-  - Cloud
-  - DynamoDB
-  - PHP
+  - Team
+  - Management
+  - Uniplaces
+
 ---
 
 Next year I’m celebrating 4 years at Uniplaces. I had 3 long, long years that represent an amazing journey in my life.
