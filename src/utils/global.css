@@ -263,3 +263,8 @@ pre[class*='language-'] {
   float: left; /* 1 */
   min-width: 100%; /* 2 */
 }
+
+figure figcaption {
+  text-align: center;
+  font-size: small;
+}
