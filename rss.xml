@@ -1,0 +1,631 @@
+<?xml version="1.0" encoding="UTF-8"?><rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0"><channel><title><![CDATA[Tiago Brito | Personal blog]]></title><description><![CDATA[Tiago Brito | Personal blog]]></description><link>https://tlfbrito.github.io</link><generator>GatsbyJS</generator><lastBuildDate>Sat, 25 Jul 2020 00:20:59 GMT</lastBuildDate><item><title><![CDATA[Blue/Green deployments with AWS Lambda]]></title><description><![CDATA[Automatic rollback Blue/green deployments for Serverless applications with gradually traffic shifting.]]></description><link>https://tlfbrito.github.io/blue-green-deployments-with-aws-lambda/</link><guid isPermaLink="false">https://tlfbrito.github.io/blue-green-deployments-with-aws-lambda/</guid><pubDate>Mon, 27 Jul 2020 00:00:00 GMT</pubDate><content:encoded>&lt;p&gt;Serverless computing is a cloud-based execution model that enables applications to be hosted as a service,
+without the need to maintain a server. Serverless &amp;#x26; Lambda functions have become very popular in
+Cloud infrastructures from small to enterprise companies.&lt;/p&gt;
+&lt;p&gt;In this example will we are going to deploy a Symfony application (PHP) to AWS Lambda, using the following stack:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;https://bref.sh/&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;Bref&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Serverless Framework + serverless-plugin-canary-deployments&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;On top of the classic PHP on AWS Lambda setup, this example will also configure AWS CloudWatch alerts and
+setup CodeDeploy to manage Blue/green canary deployments based on errors that are monitored using AWS CloudWatch.&lt;/p&gt;
+&lt;hr/&gt;
+&lt;h4 id=&quot;create-our-symfony-app&quot;&gt;&lt;a href=&quot;#create-our-symfony-app&quot; aria-hidden class=&quot;anchor&quot;&gt;&lt;svg aria-hidden=&quot;true&quot; height=&quot;16&quot; version=&quot;1.1&quot; viewBox=&quot;0 0 16 16&quot; width=&quot;16&quot;&gt;&lt;path fill-rule=&quot;evenodd&quot; d=&quot;M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/a&gt;Create our Symfony app:&lt;/h4&gt;
+&lt;p&gt;&lt;code class=&quot;language-text&quot;&gt;symfony new bref-canary-deployments-demo&lt;/code&gt; &lt;/p&gt;
+&lt;h4 id=&quot;install-bref&quot;&gt;&lt;a href=&quot;#install-bref&quot; aria-hidden class=&quot;anchor&quot;&gt;&lt;svg aria-hidden=&quot;true&quot; height=&quot;16&quot; version=&quot;1.1&quot; viewBox=&quot;0 0 16 16&quot; width=&quot;16&quot;&gt;&lt;path fill-rule=&quot;evenodd&quot; d=&quot;M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/a&gt;Install Bref:&lt;/h4&gt;
+&lt;p&gt;&lt;code class=&quot;language-text&quot;&gt;composer req bref/bref&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;Learn more on how to setup a Symfony app here: &lt;a href=&quot;https://bref.sh/docs/frameworks/symfony.html&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;https://bref.sh/docs/frameworks/symfony.html&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;I’m not going to focus on how to setup the Symfony application with Bref. If you have doubts or issues, you should follow the
+official documentation.&lt;/p&gt;
+&lt;h4 id=&quot;deploy&quot;&gt;&lt;a href=&quot;#deploy&quot; aria-hidden class=&quot;anchor&quot;&gt;&lt;svg aria-hidden=&quot;true&quot; height=&quot;16&quot; version=&quot;1.1&quot; viewBox=&quot;0 0 16 16&quot; width=&quot;16&quot;&gt;&lt;path fill-rule=&quot;evenodd&quot; d=&quot;M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/a&gt;Deploy:&lt;/h4&gt;
+&lt;p&gt;&lt;code class=&quot;language-text&quot;&gt;sls deploy&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;Under the wood, these steps have created the following infrastructure:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;AWS Lambda function with a custom PHP layer managed by Bref.&lt;/li&gt;
+&lt;li&gt;An API Gateway&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Until here, nothing new. This is a typical Serverless application, independent if you are deploying a PHP (customer layer)
+or a native AWS supported runtime (eg: NodeJS) you should relate to these steps and configurations.&lt;/p&gt;
+&lt;p&gt;Now we are going to setup the blue/gree deployments with gradually traffic shifting and automatic rollback.&lt;/p&gt;
+&lt;h4 id=&quot;install-serverless-plugin-canary-deployments&quot;&gt;&lt;a href=&quot;#install-serverless-plugin-canary-deployments&quot; aria-hidden class=&quot;anchor&quot;&gt;&lt;svg aria-hidden=&quot;true&quot; height=&quot;16&quot; version=&quot;1.1&quot; viewBox=&quot;0 0 16 16&quot; width=&quot;16&quot;&gt;&lt;path fill-rule=&quot;evenodd&quot; d=&quot;M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/a&gt;Install serverless-plugin-canary-deployments:&lt;/h4&gt;
+&lt;p&gt;&lt;code class=&quot;language-text&quot;&gt;npm i --save-dev serverless-plugin-canary-deployments&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;Enable &lt;code class=&quot;language-text&quot;&gt;serverless-plugin-canary-deployments&lt;/code&gt; on serverless framework configuration:&lt;/p&gt;
+&lt;div class=&quot;gatsby-highlight has-highlighted-lines&quot; data-language=&quot;yaml&quot;&gt;&lt;pre style=&quot;counter-reset: linenumber NaN&quot; class=&quot;language-yaml line-numbers&quot;&gt;&lt;code class=&quot;language-yaml&quot;&gt;&lt;span class=&quot;token comment&quot;&gt;#serverless.yml&lt;/span&gt;
+
+&lt;span class=&quot;token key atrule&quot;&gt;plugins&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;
+  &lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt; ./vendor/bref/bref
+&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;  &lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt; serverless&lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt;plugin&lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt;canary&lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt;deployments&lt;/span&gt;
+&lt;span class=&quot;token comment&quot;&gt;# ...&lt;/span&gt;&lt;/code&gt;&lt;span aria-hidden=&quot;true&quot; class=&quot;line-numbers-rows&quot; style=&quot;white-space: normal; width: auto; left: 0;&quot;&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id=&quot;configure-the-gradually-traffic-shifting&quot;&gt;&lt;a href=&quot;#configure-the-gradually-traffic-shifting&quot; aria-hidden class=&quot;anchor&quot;&gt;&lt;svg aria-hidden=&quot;true&quot; height=&quot;16&quot; version=&quot;1.1&quot; viewBox=&quot;0 0 16 16&quot; width=&quot;16&quot;&gt;&lt;path fill-rule=&quot;evenodd&quot; d=&quot;M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/a&gt;Configure the gradually traffic shifting:&lt;/h4&gt;
+&lt;p&gt;The new &lt;code class=&quot;language-text&quot;&gt;deploymentSettings&lt;/code&gt; will configure AWS CodeDeploy according to the defined &lt;code class=&quot;language-text&quot;&gt;type&lt;/code&gt; to deploy our Lambda
+while the traffic is shifted in equal increments with an equal number of minutes between each increment.
+In our example: &lt;code class=&quot;language-text&quot;&gt;Linear10PercentEvery1Minute&lt;/code&gt; - Shift 10 percent of the traffic, every 1 minute.
+You can read more on the different Deployment Types here: &lt;a href=&quot;https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/automating-updates-to-serverless-apps.html&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/automating-updates-to-serverless-apps.html&lt;/a&gt;&lt;/p&gt;
+&lt;div class=&quot;gatsby-highlight has-highlighted-lines&quot; data-language=&quot;yaml&quot;&gt;&lt;pre style=&quot;counter-reset: linenumber NaN&quot; class=&quot;language-yaml line-numbers&quot;&gt;&lt;code class=&quot;language-yaml&quot;&gt;&lt;span class=&quot;token comment&quot;&gt;#serverless.yml&lt;/span&gt;
+
+&lt;span class=&quot;token key atrule&quot;&gt;functions&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;
+  &lt;span class=&quot;token key atrule&quot;&gt;website&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;
+    &lt;span class=&quot;token key atrule&quot;&gt;handler&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; public/index.php
+    &lt;span class=&quot;token key atrule&quot;&gt;timeout&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token number&quot;&gt;28&lt;/span&gt; &lt;span class=&quot;token comment&quot;&gt;# in seconds (API Gateway has a timeout of 29 seconds)&lt;/span&gt;
+    &lt;span class=&quot;token key atrule&quot;&gt;layers&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;
+      &lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt; $&lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;bref&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;layer.php&lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt;74&lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt;fpm&lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt;
+    &lt;span class=&quot;token key atrule&quot;&gt;events&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;
+      &lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt;   &lt;span class=&quot;token key atrule&quot;&gt;http&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token string&quot;&gt;&apos;ANY /&apos;&lt;/span&gt;
+      &lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt;   &lt;span class=&quot;token key atrule&quot;&gt;http&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token string&quot;&gt;&apos;ANY /{proxy+}&apos;&lt;/span&gt;
+&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;    &lt;span class=&quot;token key atrule&quot;&gt;deploymentSettings&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;      &lt;span class=&quot;token key atrule&quot;&gt;type&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; Linear10PercentEvery1Minute&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;      &lt;span class=&quot;token key atrule&quot;&gt;alias&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; Live&lt;/span&gt;      &lt;span class=&quot;token key atrule&quot;&gt;alarms&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt; ApiGateway5XXErrorAlarm
+
+&lt;span class=&quot;token key atrule&quot;&gt;resources&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;
+  &lt;span class=&quot;token key atrule&quot;&gt;Resources&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;
+    &lt;span class=&quot;token key atrule&quot;&gt;ApiGateway5XXErrorAlarm&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;
+      &lt;span class=&quot;token key atrule&quot;&gt;Type&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token string&quot;&gt;&apos;AWS::CloudWatch::Alarm&apos;&lt;/span&gt;
+      &lt;span class=&quot;token key atrule&quot;&gt;Properties&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;token key atrule&quot;&gt;AlarmDescription&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token string&quot;&gt;&apos;Api Gateway server-side errors captured&apos;&lt;/span&gt;
+        &lt;span class=&quot;token key atrule&quot;&gt;Namespace&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token string&quot;&gt;&apos;AWS/ApiGateway&apos;&lt;/span&gt;
+        &lt;span class=&quot;token key atrule&quot;&gt;MetricName&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; 5XXError
+        &lt;span class=&quot;token key atrule&quot;&gt;Dimensions&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;
+          &lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;token key atrule&quot;&gt;Name&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; ApiName
+            &lt;span class=&quot;token key atrule&quot;&gt;Value&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; $&lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;self&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;provider.stage&lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt;$&lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;self&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;service&lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt;
+        &lt;span class=&quot;token key atrule&quot;&gt;Statistic&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; Sum
+        &lt;span class=&quot;token key atrule&quot;&gt;Period&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token number&quot;&gt;60&lt;/span&gt;
+        &lt;span class=&quot;token key atrule&quot;&gt;EvaluationPeriods&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token number&quot;&gt;1&lt;/span&gt;
+        &lt;span class=&quot;token key atrule&quot;&gt;Threshold&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token number&quot;&gt;1&lt;/span&gt;
+        &lt;span class=&quot;token key atrule&quot;&gt;ComparisonOperator&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; GreaterThanOrEqualToThreshold&lt;/code&gt;&lt;span aria-hidden=&quot;true&quot; class=&quot;line-numbers-rows&quot; style=&quot;white-space: normal; width: auto; left: 0;&quot;&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;On the following lines, we define and configure AWS CloudWatch to monitor our Lambda or API Gateway
+that AWS CodeDeploy will use as Threshold to decide if it should rollback or not the current deploy.&lt;/p&gt;
+&lt;div class=&quot;gatsby-highlight has-highlighted-lines&quot; data-language=&quot;yaml&quot;&gt;&lt;pre style=&quot;counter-reset: linenumber NaN&quot; class=&quot;language-yaml line-numbers&quot;&gt;&lt;code class=&quot;language-yaml&quot;&gt;&lt;span class=&quot;token comment&quot;&gt;#serverless.yml&lt;/span&gt;
+
+&lt;span class=&quot;token key atrule&quot;&gt;functions&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;
+  &lt;span class=&quot;token key atrule&quot;&gt;website&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;
+    &lt;span class=&quot;token key atrule&quot;&gt;handler&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; public/index.php
+    &lt;span class=&quot;token key atrule&quot;&gt;timeout&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token number&quot;&gt;28&lt;/span&gt; &lt;span class=&quot;token comment&quot;&gt;# in seconds (API Gateway has a timeout of 29 seconds)&lt;/span&gt;
+    &lt;span class=&quot;token key atrule&quot;&gt;layers&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;
+      &lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt; $&lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;bref&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;layer.php&lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt;74&lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt;fpm&lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt;
+    &lt;span class=&quot;token key atrule&quot;&gt;events&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;
+      &lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt;   &lt;span class=&quot;token key atrule&quot;&gt;http&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token string&quot;&gt;&apos;ANY /&apos;&lt;/span&gt;
+      &lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt;   &lt;span class=&quot;token key atrule&quot;&gt;http&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token string&quot;&gt;&apos;ANY /{proxy+}&apos;&lt;/span&gt;
+    &lt;span class=&quot;token key atrule&quot;&gt;deploymentSettings&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;
+      &lt;span class=&quot;token key atrule&quot;&gt;type&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; Linear10PercentEvery1Minute
+      &lt;span class=&quot;token key atrule&quot;&gt;alias&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; Live
+      &lt;span class=&quot;token key atrule&quot;&gt;alarms&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt; ApiGateway5XXErrorAlarm
+
+&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;&lt;span class=&quot;token key atrule&quot;&gt;resources&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;  &lt;span class=&quot;token key atrule&quot;&gt;Resources&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;    &lt;span class=&quot;token key atrule&quot;&gt;ApiGateway5XXErrorAlarm&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;      &lt;span class=&quot;token key atrule&quot;&gt;Type&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token string&quot;&gt;&apos;AWS::CloudWatch::Alarm&apos;&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;      &lt;span class=&quot;token key atrule&quot;&gt;Properties&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;        &lt;span class=&quot;token key atrule&quot;&gt;AlarmDescription&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token string&quot;&gt;&apos;Api Gateway server-side errors captured&apos;&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;        &lt;span class=&quot;token key atrule&quot;&gt;Namespace&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token string&quot;&gt;&apos;AWS/ApiGateway&apos;&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;        &lt;span class=&quot;token key atrule&quot;&gt;MetricName&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; 5XXError&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;        &lt;span class=&quot;token key atrule&quot;&gt;Dimensions&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;          &lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;token key atrule&quot;&gt;Name&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; ApiName&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;            &lt;span class=&quot;token key atrule&quot;&gt;Value&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; $&lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;self&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;provider.stage&lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;-&lt;/span&gt;$&lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;self&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt;service&lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;        &lt;span class=&quot;token key atrule&quot;&gt;Statistic&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; Sum&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;        &lt;span class=&quot;token key atrule&quot;&gt;Period&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token number&quot;&gt;60&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;        &lt;span class=&quot;token key atrule&quot;&gt;EvaluationPeriods&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token number&quot;&gt;1&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;        &lt;span class=&quot;token key atrule&quot;&gt;Threshold&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token number&quot;&gt;1&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;        &lt;span class=&quot;token key atrule&quot;&gt;ComparisonOperator&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; GreaterThanOrEqualToThreshold&lt;/span&gt;&lt;/code&gt;&lt;span aria-hidden=&quot;true&quot; class=&quot;line-numbers-rows&quot; style=&quot;white-space: normal; width: auto; left: 0;&quot;&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h4 id=&quot;redeploy&quot;&gt;&lt;a href=&quot;#redeploy&quot; aria-hidden class=&quot;anchor&quot;&gt;&lt;svg aria-hidden=&quot;true&quot; height=&quot;16&quot; version=&quot;1.1&quot; viewBox=&quot;0 0 16 16&quot; width=&quot;16&quot;&gt;&lt;path fill-rule=&quot;evenodd&quot; d=&quot;M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/a&gt;(Re)Deploy:&lt;/h4&gt;
+&lt;p&gt;&lt;code class=&quot;language-text&quot;&gt;sls deploy&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;After you initiate a second deploy, it will create an additional set of resources on AWS:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;An Alarm on AWS CloudWatch&lt;/li&gt;
+&lt;li&gt;An Application on CodeDeploy&lt;/li&gt;
+&lt;/ul&gt;
+&lt;figure&gt;
+  &lt;span class=&quot;gatsby-resp-image-wrapper&quot; style=&quot;position: relative; display: block; margin-left: auto; margin-right: auto; max-width: 590px; &quot;&gt;
+      &lt;a class=&quot;gatsby-resp-image-link&quot; href=&quot;https://tlfbrito.github.io/static/2f3f5806ed9ffa3e4c7958a575e3ef2b/31df8/cloud-watch-alarm.png&quot; style=&quot;display: block&quot; target=&quot;_blank&quot; rel=&quot;noopener&quot;&gt;
+    &lt;span class=&quot;gatsby-resp-image-background-image&quot; style=&quot;padding-bottom: 53.37837837837838%; position: relative; bottom: 0; left: 0; background-image: url(&amp;apos;data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAALCAYAAAB/Ca1DAAAACXBIWXMAABYlAAAWJQFJUiTwAAABp0lEQVQoz4VTiU7jMBTM/38abHe1LELdNAfbQqFpnMRH7KQ5hrFDEQsqRBqN41jvzTxPot3DI7Q2cM5BKY2DKFBWAnUjiQaiqlAK8R+OJRG4XNZkf05pjUhUNVzXoW0tLIumeY6r6xV+/vqN6x8r3Py5DXtxkiDJMmzSFOu/MeJNgrv1GpskDet/291ScL/foyiOeHp6Rt/3odP9dossv0eSZqF7a1toYz7BtC2kUgFeWCMlIklljWmhWlq2HT9qGB72qhflSzFzAaWoQlPPvnC0uo1xE+dIHws8NB0OVYPicMAwDBjfYbgAQzGNn7esQ+Moe+YlmBNqN6LuJgipUXLQjva7/oTudMI0z/jucaOD4WgiQYsepVQ4spOxFgOtjrQ6sPtAHrk3fYGRY2N3WOsQKfpWWjE6mjOQ3O8xTxPmcVz4vL6AifAj8ed8SqLllnS48oZrn8fJF6GNmVbfcH4PjIU/2LZUG6mgTOHMhvL9cH3hzoP238O97nl2LCAZ/qIowlmfireCi0rmqVH8U2pmz4aOH9G+whcUnPldukW+Y5bLKsToBSS6THB4EdZRAAAAAElFTkSuQmCC&amp;apos;); background-size: cover; display: block;&quot;&gt;&lt;/span&gt;
+  &lt;img class=&quot;gatsby-resp-image-image&quot; alt=&quot;CloudWatch Alarm&quot; title=&quot;CloudWatch Alarm&quot; src=&quot;https://tlfbrito.github.io/static/2f3f5806ed9ffa3e4c7958a575e3ef2b/fcda8/cloud-watch-alarm.png&quot; srcset=&quot;https://tlfbrito.github.io/static/2f3f5806ed9ffa3e4c7958a575e3ef2b/12f09/cloud-watch-alarm.png 148w,https://tlfbrito.github.io/static/2f3f5806ed9ffa3e4c7958a575e3ef2b/e4a3f/cloud-watch-alarm.png 295w,https://tlfbrito.github.io/static/2f3f5806ed9ffa3e4c7958a575e3ef2b/fcda8/cloud-watch-alarm.png 590w,https://tlfbrito.github.io/static/2f3f5806ed9ffa3e4c7958a575e3ef2b/efc66/cloud-watch-alarm.png 885w,https://tlfbrito.github.io/static/2f3f5806ed9ffa3e4c7958a575e3ef2b/c83ae/cloud-watch-alarm.png 1180w,https://tlfbrito.github.io/static/2f3f5806ed9ffa3e4c7958a575e3ef2b/31df8/cloud-watch-alarm.png 2366w&quot; sizes=&quot;(max-width: 590px) 100vw, 590px&quot; style=&quot;width:100%;height:100%;margin:0;vertical-align:middle;position:absolute;top:0;left:0;&quot; loading=&quot;lazy&quot;&gt;
+  &lt;/a&gt;
+    &lt;/span&gt;
+  &lt;figcaption&gt;CloudWatch Alarm&lt;/figcaption&gt;
+&lt;/figure&gt;
+&lt;p&gt;&lt;strong&gt;Important:&lt;/strong&gt; We choose to setup our Alarm for API Gateway errors instead of using directly the lambda error metrics.
+This happen, because Lambda Errors don’t include the application exceptions/errors,
+because most of the time this is handle by the Framework (eg: Symfony) or even the language itself.
+Lambda errors will only take into account errors that break the runtime (eg: PHP).
+This is why, we decided to use API Gateway error metrics instead, but you can and should monitor both.&lt;/p&gt;
+&lt;p&gt;This new deploy will show up on AWS CodeDeploy:&lt;/p&gt;
+&lt;figure&gt;
+  &lt;span class=&quot;gatsby-resp-image-wrapper&quot; style=&quot;position: relative; display: block; margin-left: auto; margin-right: auto; max-width: 590px; &quot;&gt;
+      &lt;a class=&quot;gatsby-resp-image-link&quot; href=&quot;https://tlfbrito.github.io/static/8b89bdc4c9ade05d52fa469b5cf7a25a/6274f/deploy-in-progress.png&quot; style=&quot;display: block&quot; target=&quot;_blank&quot; rel=&quot;noopener&quot;&gt;
+    &lt;span class=&quot;gatsby-resp-image-background-image&quot; style=&quot;padding-bottom: 37.16216216216216%; position: relative; bottom: 0; left: 0; background-image: url(&amp;apos;data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAHCAYAAAAIy204AAAACXBIWXMAABYlAAAWJQFJUiTwAAABOUlEQVQoz22R3U7DMAyF+/43SDwKEleId5gQVyC0dYNp65a2adL8pwfbHUhIVDqKa5/aX51G9T222x3a/QG7tsWezq/jEd77/xUCvNHwWq2yGoFyP2qGccS56zBqjX4YoKeJ4gkhRjhqYOwsRm5krIFLFW7zAPt0B/t8D/fyiJgrInvI39h5RkwJuRTknFFr/Y05z0q3OLGP4hQcorMiiSnvZbhFw8FkDE7nDpYSwzAK0eVylRzXj7SCici5vmsPMuBMddUP5I1QqhffOGo0/HElolqYbiVbmJLOwqSkT2WgXaR8Icr4p87i9Qg5kTaRXuoCqDkj8C7KgimU9ReIfKHa68ni4+pQyNi7LJ4QPJxz0oQvlMH4aYI0XGixPK2KUlkJhIJo3jqLd1KmvPhuhEzPDfli+VyozzdQLBy74m13IAAAAABJRU5ErkJggg==&amp;apos;); background-size: cover; display: block;&quot;&gt;&lt;/span&gt;
+  &lt;img class=&quot;gatsby-resp-image-image&quot; alt=&quot;CodeDeploy - Deploy in Progres&quot; title=&quot;CodeDeploy - Deploy in Progres&quot; src=&quot;https://tlfbrito.github.io/static/8b89bdc4c9ade05d52fa469b5cf7a25a/fcda8/deploy-in-progress.png&quot; srcset=&quot;https://tlfbrito.github.io/static/8b89bdc4c9ade05d52fa469b5cf7a25a/12f09/deploy-in-progress.png 148w,https://tlfbrito.github.io/static/8b89bdc4c9ade05d52fa469b5cf7a25a/e4a3f/deploy-in-progress.png 295w,https://tlfbrito.github.io/static/8b89bdc4c9ade05d52fa469b5cf7a25a/fcda8/deploy-in-progress.png 590w,https://tlfbrito.github.io/static/8b89bdc4c9ade05d52fa469b5cf7a25a/efc66/deploy-in-progress.png 885w,https://tlfbrito.github.io/static/8b89bdc4c9ade05d52fa469b5cf7a25a/c83ae/deploy-in-progress.png 1180w,https://tlfbrito.github.io/static/8b89bdc4c9ade05d52fa469b5cf7a25a/6274f/deploy-in-progress.png 2098w&quot; sizes=&quot;(max-width: 590px) 100vw, 590px&quot; style=&quot;width:100%;height:100%;margin:0;vertical-align:middle;position:absolute;top:0;left:0;&quot; loading=&quot;lazy&quot;&gt;
+  &lt;/a&gt;
+    &lt;/span&gt;
+  &lt;figcaption&gt;CodeDeploy - Deploy in Progress&lt;/figcaption&gt;
+&lt;/figure&gt;
+&lt;figure&gt;
+  &lt;span class=&quot;gatsby-resp-image-wrapper&quot; style=&quot;position: relative; display: block; margin-left: auto; margin-right: auto; max-width: 590px; &quot;&gt;
+      &lt;a class=&quot;gatsby-resp-image-link&quot; href=&quot;https://tlfbrito.github.io/static/3d5353103a3850ac3a4a2e9c7314fdbd/7da7d/traffic-shifting-progress.png&quot; style=&quot;display: block&quot; target=&quot;_blank&quot; rel=&quot;noopener&quot;&gt;
+    &lt;span class=&quot;gatsby-resp-image-background-image&quot; style=&quot;padding-bottom: 43.24324324324324%; position: relative; bottom: 0; left: 0; background-image: url(&amp;apos;data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAJCAYAAAAywQxIAAAACXBIWXMAABYlAAAWJQFJUiTwAAABmUlEQVQoz31SbU7cMBTMKTgUZ6m4Qn/3CJV6Bg6AxI/ytz+WVYsqsSwsYeNsvpzEcRLHsTO8Z1gEQq2l0ZMn4/G850Tr33+wul5js71Hq9Q/UVQSsq6RpAeIQ4ayqkLdixQJIX5KUJQVokOWQZDokOXoh+ETBkLXdcjynHQpWJ/nBfq+x2gMhnHESODKXCSEQC0lGllj8Q7wnqp/q57A4qIskVIiERIJKNWFy45g02maEMVFg10pIRqNqrcoj9A27MfJBvHjY4zb200wLIoymKbUGYM5Tm8ocbTPSsi+QWc0rPOYZsJr5f08uyBUWkMPI5ZlAS+uuqdklOq4uJsoIUNjLPTk4ciAlEF8hKcxNHrA2fkNTr//wrfLbThsyOgh3mG7u0fTtoFzziGSND/NDzAaLPi4XsOgJsPTHyucfP2JL+d/A6fNhKubB1xcbxDnMnAzG6pOh9figVprMb0D77ldHvrdPsN6m0AUNTwddH7BvuoQVxqDdS8JuWVFvwTjf/8gf9dUtWqprRl2nkMA1TYYdPfC8eXEPQNQDazZfAF+NwAAAABJRU5ErkJggg==&amp;apos;); background-size: cover; display: block;&quot;&gt;&lt;/span&gt;
+  &lt;img class=&quot;gatsby-resp-image-image&quot; alt=&quot;CodeDeploy - Traffic Shifting&quot; title=&quot;CodeDeploy - Traffic Shifting&quot; src=&quot;https://tlfbrito.github.io/static/3d5353103a3850ac3a4a2e9c7314fdbd/fcda8/traffic-shifting-progress.png&quot; srcset=&quot;https://tlfbrito.github.io/static/3d5353103a3850ac3a4a2e9c7314fdbd/12f09/traffic-shifting-progress.png 148w,https://tlfbrito.github.io/static/3d5353103a3850ac3a4a2e9c7314fdbd/e4a3f/traffic-shifting-progress.png 295w,https://tlfbrito.github.io/static/3d5353103a3850ac3a4a2e9c7314fdbd/fcda8/traffic-shifting-progress.png 590w,https://tlfbrito.github.io/static/3d5353103a3850ac3a4a2e9c7314fdbd/efc66/traffic-shifting-progress.png 885w,https://tlfbrito.github.io/static/3d5353103a3850ac3a4a2e9c7314fdbd/c83ae/traffic-shifting-progress.png 1180w,https://tlfbrito.github.io/static/3d5353103a3850ac3a4a2e9c7314fdbd/7da7d/traffic-shifting-progress.png 2120w&quot; sizes=&quot;(max-width: 590px) 100vw, 590px&quot; style=&quot;width:100%;height:100%;margin:0;vertical-align:middle;position:absolute;top:0;left:0;&quot; loading=&quot;lazy&quot;&gt;
+  &lt;/a&gt;
+    &lt;/span&gt;
+  &lt;figcaption&gt;CodeDeploy - Traffic Shifting&lt;/figcaption&gt;
+&lt;/figure&gt;
+&lt;p&gt;At the same time, we can also follow up on the traffic shifting progress and if we want,
+we can also manually &lt;em&gt;Stop and rollback&lt;/em&gt; the deployment.
+During this moment if our API Gateway Alarm detect any error, the deployment will
+be &lt;strong&gt;automatically&lt;/strong&gt; rollback by AWS CodeDeploy.&lt;/p&gt;
+&lt;p&gt;This process and configuration is a great way to deploy and monitor your Serverless applications but also
+to automate the rollback process on a CI/CD pipeline.&lt;/p&gt;
+&lt;hr&gt;
+                &lt;div style=&quot;margin-top=55px; font-style: italic;&quot;&gt;(This is an article from www.tlfbrito.github.io . You can read it online by &lt;a href=&quot;https://tlfbrito.github.io/blue-green-deployments-with-aws-lambda/&quot;&gt;clicking here&lt;/a&gt;.)&lt;/div&gt;
+              </content:encoded></item><item><title><![CDATA[Moving away from Medium]]></title><description><![CDATA[After a couple of years using Medium as my blog, I decided to move away from Medium and use Gatsby (a static website generator).]]></description><link>https://tlfbrito.github.io/moving-from-medium-to-static-blog/</link><guid isPermaLink="false">https://tlfbrito.github.io/moving-from-medium-to-static-blog/</guid><pubDate>Tue, 16 Jun 2020 00:00:00 GMT</pubDate><content:encoded>&lt;p&gt;After a couple of years using Medium as my blog, I decided to move away from Medium and
+use &lt;a href=&quot;https://www.gatsbyjs.org&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;Gatsby&lt;/a&gt; (a static website generator).&lt;/p&gt;
+&lt;h4 id=&quot;main-issues-with-medium-were&quot;&gt;&lt;a href=&quot;#main-issues-with-medium-were&quot; aria-hidden class=&quot;anchor&quot;&gt;&lt;svg aria-hidden=&quot;true&quot; height=&quot;16&quot; version=&quot;1.1&quot; viewBox=&quot;0 0 16 16&quot; width=&quot;16&quot;&gt;&lt;path fill-rule=&quot;evenodd&quot; d=&quot;M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/a&gt;Main issues with Medium were:&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;Limited articles readers can access.&lt;/li&gt;
+&lt;li&gt;No code highlight for code-snippets (I always thought this was something that Medium would fix with the time),
+the only alternative was using &lt;a href=&quot;https://gist.github.com&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;Github Gists&lt;/a&gt; but this means that I need to create a Gist
+for every code-snippet that I wanted to show. &lt;/li&gt;
+&lt;li&gt;Internet access was require to write a build my articles.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;After checking some alternatives, I ended up considering Gatsby as a really good alternative for the job.&lt;/p&gt;
+&lt;h4 id=&quot;main-advantages-of-using-gatsby&quot;&gt;&lt;a href=&quot;#main-advantages-of-using-gatsby&quot; aria-hidden class=&quot;anchor&quot;&gt;&lt;svg aria-hidden=&quot;true&quot; height=&quot;16&quot; version=&quot;1.1&quot; viewBox=&quot;0 0 16 16&quot; width=&quot;16&quot;&gt;&lt;path fill-rule=&quot;evenodd&quot; d=&quot;M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/a&gt;Main advantages of using Gatsby:&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;Free hosting using multiples hosting solutions: Github Pages (I’m using this), Netlify and more…&lt;/li&gt;
+&lt;li&gt;Static generated (no need for a server to render the pages) during build time.&lt;/li&gt;
+&lt;li&gt;I can compose and write articles without internet connection using markdown and view the final
+result in my local environment&lt;/li&gt;
+&lt;li&gt;Advance code highlight - I’m using syntax theme based on &lt;a href=&quot;https://github.com/sdras/night-owl-vscode-theme/&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;https://github.com/sdras/night-owl-vscode-theme/&lt;/a&gt; &lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Example: &lt;/p&gt;
+&lt;div class=&quot;gatsby-highlight has-highlighted-lines&quot; data-language=&quot;php&quot;&gt;&lt;pre style=&quot;counter-reset: linenumber 0&quot; class=&quot;language-php line-numbers&quot;&gt;&lt;code class=&quot;language-php&quot;&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;&lt;span class=&quot;token keyword&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;token class-name&quot;&gt;DynamoDbMessageRepository&lt;/span&gt; &lt;span class=&quot;token keyword&quot;&gt;implements&lt;/span&gt; &lt;span class=&quot;token class-name&quot;&gt;MessageRepository&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;&lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;&lt;/span&gt;    &lt;span class=&quot;token comment&quot;&gt;/**
+     * @var DynamoDbClient
+     */&lt;/span&gt;
+    &lt;span class=&quot;token keyword&quot;&gt;protected&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$client&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;;&lt;/span&gt;
+
+    &lt;span class=&quot;token comment&quot;&gt;/**
+     * @var MessageSerializer
+     */&lt;/span&gt;
+    &lt;span class=&quot;token keyword&quot;&gt;protected&lt;/span&gt; MessageSerializer &lt;span class=&quot;token variable&quot;&gt;$serializer&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;;&lt;/span&gt;
+
+    &lt;span class=&quot;token comment&quot;&gt;/**
+     * @var string
+     */&lt;/span&gt;
+    &lt;span class=&quot;token keyword&quot;&gt;protected&lt;/span&gt; string &lt;span class=&quot;token variable&quot;&gt;$tableName&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;;&lt;/span&gt;
+
+    &lt;span class=&quot;token keyword&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;token keyword&quot;&gt;function&lt;/span&gt; &lt;span class=&quot;token function&quot;&gt;__construct&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;DynamoDbClient &lt;span class=&quot;token variable&quot;&gt;$client&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;,&lt;/span&gt; MessageSerializer &lt;span class=&quot;token variable&quot;&gt;$serializer&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;,&lt;/span&gt; string &lt;span class=&quot;token variable&quot;&gt;$tableName&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;token variable&quot;&gt;$this&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token property&quot;&gt;client&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$client&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;;&lt;/span&gt;
+        &lt;span class=&quot;token variable&quot;&gt;$this&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token property&quot;&gt;serializer&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$serializer&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;gatsby-highlight-code-line&quot;&gt;        &lt;span class=&quot;token variable&quot;&gt;$this&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token property&quot;&gt;tableName&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$tableName&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;;&lt;/span&gt;&lt;/span&gt;    &lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt;
+
+    &lt;span class=&quot;token keyword&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;token keyword&quot;&gt;function&lt;/span&gt; &lt;span class=&quot;token function&quot;&gt;retrieveAll&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;AggregateRootId &lt;span class=&quot;token variable&quot;&gt;$id&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; Generator
+    &lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;token variable&quot;&gt;$query&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;token punctuation&quot;&gt;[&lt;/span&gt;
+            &lt;span class=&quot;token single-quoted-string string&quot;&gt;&apos;TableName&apos;&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$this&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token property&quot;&gt;tableName&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;,&lt;/span&gt;
+            &lt;span class=&quot;token single-quoted-string string&quot;&gt;&apos;KeyConditionExpression&apos;&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt; &lt;span class=&quot;token single-quoted-string string&quot;&gt;&apos;aggregateRootId = :v1&apos;&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;,&lt;/span&gt;
+            &lt;span class=&quot;token single-quoted-string string&quot;&gt;&apos;ExpressionAttributeValues&apos;&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt; &lt;span class=&quot;token punctuation&quot;&gt;[&lt;/span&gt;
+                &lt;span class=&quot;token single-quoted-string string&quot;&gt;&apos;:v1&apos;&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt; &lt;span class=&quot;token punctuation&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;token single-quoted-string string&quot;&gt;&apos;S&apos;&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$id&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token function&quot;&gt;toString&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;,&lt;/span&gt;
+            &lt;span class=&quot;token punctuation&quot;&gt;]&lt;/span&gt;
+        &lt;span class=&quot;token punctuation&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;;&lt;/span&gt;
+
+        &lt;span class=&quot;token variable&quot;&gt;$result&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$this&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token property&quot;&gt;client&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token function&quot;&gt;getPaginator&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token single-quoted-string string&quot;&gt;&apos;Query&apos;&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$query&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;;&lt;/span&gt;
+
+        &lt;span class=&quot;token keyword&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$this&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token function&quot;&gt;yieldMessagesForResult&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token variable&quot;&gt;$result&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;span aria-hidden=&quot;true&quot; class=&quot;line-numbers-rows&quot; style=&quot;white-space: normal; width: auto; left: 0;&quot;&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;ul&gt;
+&lt;li&gt;Great documentation and integration. Gatsby integrates almost with anything and more important it expose
+to developers always the same API in GraphQL independent of what you are connecting
+to (MySQL, Headless CMS, Wordpress, etc…).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Until now, it has been a great experience and I highly recommend you to give it a try. &lt;/p&gt;
+&lt;hr&gt;
+                &lt;div style=&quot;margin-top=55px; font-style: italic;&quot;&gt;(This is an article from www.tlfbrito.github.io . You can read it online by &lt;a href=&quot;https://tlfbrito.github.io/moving-from-medium-to-static-blog/&quot;&gt;clicking here&lt;/a&gt;.)&lt;/div&gt;
+              </content:encoded></item><item><title><![CDATA[3 years at Uniplaces… and still counting!]]></title><description><![CDATA[DynamoDB is NoSQL and distributed database from Amazon webservices that automatically spreads the data and traffic for the table over a sufficient number of servers to handle the request capacity specified by the customer and the amount of data stored.]]></description><link>https://tlfbrito.github.io/automating-uniplaces-git-flow/</link><guid isPermaLink="false">https://tlfbrito.github.io/automating-uniplaces-git-flow/</guid><pubDate>Fri, 29 Nov 2019 00:00:00 GMT</pubDate><content:encoded>&lt;p&gt;At &lt;a href=&quot;https://www.uniplaces.com&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;Uniplaces&lt;/a&gt; we use git-flow almost since the beginning. At first we started with basic:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;dev branch for staging environment&lt;/li&gt;
+&lt;li&gt;master for production&lt;/li&gt;
+&lt;li&gt;feature branches for new features (based on dev branch)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;P.S.: If you don’t know or aren’t familiar with git-flow, you should stop here are read:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;https://medium.com/@nuno.caneco/using-git-flow-243581525aee&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;https://medium.com/@nuno.caneco/using-git-flow-243581525aee&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;https://danielkummer.github.io/git-flow-cheatsheet/&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;https://danielkummer.github.io/git-flow-cheatsheet/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;After a while we wanted to increase our agility and reduce the time that took us to fix important bugs in our systems, and we decided to introduce the hotfix concept.
+Hotfixes are created based on master branch and then merged both to development &amp;#x26; master.&lt;/p&gt;
+&lt;p&gt;&lt;span
+      class=&quot;gatsby-resp-image-wrapper&quot;
+      style=&quot;position: relative; display: block; margin-left: auto; margin-right: auto; max-width: 590px; &quot;
+    &gt;
+      &lt;a
+    class=&quot;gatsby-resp-image-link&quot;
+    href=&quot;https://tlfbrito.github.io/static/b382217eea9c8931b60576c128fa33db/2cefc/1.png&quot;
+    style=&quot;display: block&quot;
+    target=&quot;_blank&quot;
+    rel=&quot;noopener&quot;
+  &gt;
+    &lt;span
+    class=&quot;gatsby-resp-image-background-image&quot;
+    style=&quot;padding-bottom: 22.2972972972973%; position: relative; bottom: 0; left: 0; background-image: url(&apos;data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAECAIAAAABPYjBAAAACXBIWXMAAAsSAAALEgHS3X78AAAAxUlEQVQI102Ny64BQRRF+///QIwMkDthyMDQoxGR3Lhpr3Dp1tWpfmitqDpOPRRBrMEa7Oyd7fxu03Lba4936yCLkjyPKXEH0WhI+t10teSI2f/mcj7ngR8dwoWfAggL59zaMcaI61VJaZ6wON791A7Nxr5epcOBTSO3Jxij00lBwkdDa/PG8WakUnI7LW+9JKcTC4OM0gKVFHADRABApayV1tmxmP/58Lx+PacJ82bhfptwfpNSgkA70lp9kIgvSyU4qi/uygLeWwQAyroAAAAASUVORK5CYII=&apos;); background-size: cover; display: block;&quot;
+  &gt;&lt;/span&gt;
+  &lt;img
+        class=&quot;gatsby-resp-image-image&quot;
+        alt=&quot;Hotfix process&quot;
+        title=&quot;Hotfix process&quot;
+        src=&quot;https://tlfbrito.github.io/static/b382217eea9c8931b60576c128fa33db/fcda8/1.png&quot;
+        srcset=&quot;https://tlfbrito.github.io/static/b382217eea9c8931b60576c128fa33db/12f09/1.png 148w,https://tlfbrito.github.io/static/b382217eea9c8931b60576c128fa33db/e4a3f/1.png 295w,https://tlfbrito.github.io/static/b382217eea9c8931b60576c128fa33db/fcda8/1.png 590w,https://tlfbrito.github.io/static/b382217eea9c8931b60576c128fa33db/efc66/1.png 885w,https://tlfbrito.github.io/static/b382217eea9c8931b60576c128fa33db/c83ae/1.png 1180w,https://tlfbrito.github.io/static/b382217eea9c8931b60576c128fa33db/2cefc/1.png 1400w&quot;
+        sizes=&quot;(max-width: 590px) 100vw, 590px&quot;
+        style=&quot;width:100%;height:100%;margin:0;vertical-align:middle;position:absolute;top:0;left:0;&quot;
+        loading=&quot;lazy&quot;
+      /&gt;
+  &lt;/a&gt;
+    &lt;/span&gt;&lt;/p&gt;
+&lt;h4 id=&quot;git-flow-hotfixes-cant-be-reviewed&quot;&gt;&lt;a href=&quot;#git-flow-hotfixes-cant-be-reviewed&quot; aria-hidden class=&quot;anchor&quot;&gt;&lt;svg aria-hidden=&quot;true&quot; height=&quot;16&quot; version=&quot;1.1&quot; viewBox=&quot;0 0 16 16&quot; width=&quot;16&quot;&gt;&lt;path fill-rule=&quot;evenodd&quot; d=&quot;M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/a&gt;Git-flow hotfixes can’t be reviewed&lt;/h4&gt;
+&lt;p&gt;This flow works quite well for smalls teams where everyone knows what other people are doing, but for medium/large
+teams hotfixes create a bypass to Pull-requests which is one of our most important step of our development lifecycle.
+It’s important that even for small fixes, a second pair of eyes have a look into it.
+To do this, it we needed create the hotfix branch based on master as normal, and instead of finishing the hotfix
+and merge to master &amp;#x26; development branches it was require to:
+Create the pull-request from the hotfix to master branch.
+If the previous pull-request is approved, the developer would need to do the same for development branch:
+Create the pull-request pointing the hotfix to development branch.
+This second step, was making me feel bad as a engineer. We are suppose to simplify processes, not to create more entropy.
+I decided then, to create a GitHub application bot to receive Github webhooks and automatically create the second
+PR (hotfix-&gt;development branch).&lt;/p&gt;
+&lt;h4 id=&quot;automating-hotfixes-pull-requests&quot;&gt;&lt;a href=&quot;#automating-hotfixes-pull-requests&quot; aria-hidden class=&quot;anchor&quot;&gt;&lt;svg aria-hidden=&quot;true&quot; height=&quot;16&quot; version=&quot;1.1&quot; viewBox=&quot;0 0 16 16&quot; width=&quot;16&quot;&gt;&lt;path fill-rule=&quot;evenodd&quot; d=&quot;M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/a&gt;Automating hotfixes pull-requests&lt;/h4&gt;
+&lt;p&gt;To automate hotfixes, we created a github application. This application will require to have access
+to &lt;a href=&quot;https://developer.github.com/v3/activity/events/types/#pullrequestevent&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;pull-request events&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;span
+      class=&quot;gatsby-resp-image-wrapper&quot;
+      style=&quot;position: relative; display: block; margin-left: auto; margin-right: auto; max-width: 590px; &quot;
+    &gt;
+      &lt;a
+    class=&quot;gatsby-resp-image-link&quot;
+    href=&quot;https://tlfbrito.github.io/static/fa0b27da757fe97e251365d612a59c56/2cefc/2.png&quot;
+    style=&quot;display: block&quot;
+    target=&quot;_blank&quot;
+    rel=&quot;noopener&quot;
+  &gt;
+    &lt;span
+    class=&quot;gatsby-resp-image-background-image&quot;
+    style=&quot;padding-bottom: 37.16216216216216%; position: relative; bottom: 0; left: 0; background-image: url(&apos;data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAHCAIAAACHqfpvAAAACXBIWXMAAAsSAAALEgHS3X78AAABJ0lEQVQY032QX0vDMBTF+/2/go/6KExFZIwxHwdqtzkRStfZuqXtmrZLk2bJanMbb/EvCB4uIbmQc3/3ONZa6DqsXvZHSqmqqjjndV3j6T64RVEIISrGPvoA4Ni/QpMvHzTMaR4Tspi5hGylrCmlvu97npdlmWOgu5y+nk2Cx4CGKcN/xtq+uu4NZUwtZVbuF96mLPdIgT0cyxjTWjsIfLtMLqZRuBNUqJ17H99cx6NhMhmrivHoRRV5sV5n/NjvclCEkDRN0QKfPXZz0KKsoDXISuezaDBIRsN4PBJFvg9WPInLlS+VPmotpQzDEIGNQbLOMQauzpenJ3dP821CSn1sN6m039gABkAetPe8wQgRFXtN0+AFz35y2wIuh4l/pgXwO7N/9A7CYoocuPkuawAAAABJRU5ErkJggg==&apos;); background-size: cover; display: block;&quot;
+  &gt;&lt;/span&gt;
+  &lt;img
+        class=&quot;gatsby-resp-image-image&quot;
+        alt=&quot;Automating hotfixes diagram&quot;
+        title=&quot;Automating hotfixes diagram&quot;
+        src=&quot;https://tlfbrito.github.io/static/fa0b27da757fe97e251365d612a59c56/fcda8/2.png&quot;
+        srcset=&quot;https://tlfbrito.github.io/static/fa0b27da757fe97e251365d612a59c56/12f09/2.png 148w,https://tlfbrito.github.io/static/fa0b27da757fe97e251365d612a59c56/e4a3f/2.png 295w,https://tlfbrito.github.io/static/fa0b27da757fe97e251365d612a59c56/fcda8/2.png 590w,https://tlfbrito.github.io/static/fa0b27da757fe97e251365d612a59c56/efc66/2.png 885w,https://tlfbrito.github.io/static/fa0b27da757fe97e251365d612a59c56/c83ae/2.png 1180w,https://tlfbrito.github.io/static/fa0b27da757fe97e251365d612a59c56/2cefc/2.png 1400w&quot;
+        sizes=&quot;(max-width: 590px) 100vw, 590px&quot;
+        style=&quot;width:100%;height:100%;margin:0;vertical-align:middle;position:absolute;top:0;left:0;&quot;
+        loading=&quot;lazy&quot;
+      /&gt;
+  &lt;/a&gt;
+    &lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;This github application will dispatch the pull-request event as a webhook to our uni-webhook bot to handle that request
+and create the same pull-request to development branch if the PR event is defined as closed &amp;#x26; merged.&lt;/p&gt;
+&lt;p&gt;&lt;span
+      class=&quot;gatsby-resp-image-wrapper&quot;
+      style=&quot;position: relative; display: block; margin-left: auto; margin-right: auto; max-width: 590px; &quot;
+    &gt;
+      &lt;a
+    class=&quot;gatsby-resp-image-link&quot;
+    href=&quot;https://tlfbrito.github.io/static/c6aa3b39ef578f9725b2ddcfcfbb9914/39a20/3.png&quot;
+    style=&quot;display: block&quot;
+    target=&quot;_blank&quot;
+    rel=&quot;noopener&quot;
+  &gt;
+    &lt;span
+    class=&quot;gatsby-resp-image-background-image&quot;
+    style=&quot;padding-bottom: 37.83783783783784%; position: relative; bottom: 0; left: 0; background-image: url(&apos;data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAICAIAAAB2/0i6AAAACXBIWXMAAAsSAAALEgHS3X78AAABBElEQVQY04VR204FMQjcn/cX/DWf9MFj9tobFErb3e6RPY2J0RgnE0oJBBiGp5fnN/eOHjdrEWMkBrXxcgIJstqyeOZc778wzH4xzgKgSNbiAFBKwUgBkJOUUl2AAJEotdZ+FosUEdn3XT+amnNWp9Y951JrPVpLSZJc2I+jnWdnx/AaG0e8jcvHtBoXls2O86ruvBpKwlJSrp0suVPj1qPagerJxNZ5H6BUneAoj7ZK9f+i5tT9GHRIAJimaV1XImKV5jH5v7jG1iel5JzqAtY5Yy0gnue9b9U6vu3ZvqyGr2JtNY+jSs2cVFmKhBC998664IPZjN5CxeoNcy3AKCnrRT8BRsbOocEphNUAAAAASUVORK5CYII=&apos;); background-size: cover; display: block;&quot;
+  &gt;&lt;/span&gt;
+  &lt;img
+        class=&quot;gatsby-resp-image-image&quot;
+        alt=&quot;Example of a PR (hotfix =&amp;gt; development) auto-generated by our Github bot&quot;
+        title=&quot;Example of a PR (hotfix =&amp;gt; development) auto-generated by our Github bot&quot;
+        src=&quot;https://tlfbrito.github.io/static/c6aa3b39ef578f9725b2ddcfcfbb9914/fcda8/3.png&quot;
+        srcset=&quot;https://tlfbrito.github.io/static/c6aa3b39ef578f9725b2ddcfcfbb9914/12f09/3.png 148w,https://tlfbrito.github.io/static/c6aa3b39ef578f9725b2ddcfcfbb9914/e4a3f/3.png 295w,https://tlfbrito.github.io/static/c6aa3b39ef578f9725b2ddcfcfbb9914/fcda8/3.png 590w,https://tlfbrito.github.io/static/c6aa3b39ef578f9725b2ddcfcfbb9914/39a20/3.png 859w&quot;
+        sizes=&quot;(max-width: 590px) 100vw, 590px&quot;
+        style=&quot;width:100%;height:100%;margin:0;vertical-align:middle;position:absolute;top:0;left:0;&quot;
+        loading=&quot;lazy&quot;
+      /&gt;
+  &lt;/a&gt;
+    &lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;We will see in detail, how to create the github application and the uni-webhook bot on the next part of this story.&lt;/p&gt;
+&lt;hr&gt;
+                &lt;div style=&quot;margin-top=55px; font-style: italic;&quot;&gt;(This is an article from www.tlfbrito.github.io . You can read it online by &lt;a href=&quot;https://tlfbrito.github.io/automating-uniplaces-git-flow/&quot;&gt;clicking here&lt;/a&gt;.)&lt;/div&gt;
+              </content:encoded></item><item><title><![CDATA[3 years at Uniplaces… and still counting!]]></title><description><![CDATA[Next year I’m celebrating 4 years at Uniplaces. I had 3 long, long years that represent an amazing journey in my life.]]></description><link>https://tlfbrito.github.io/3-years-at-uniplaces-and-still-counting/</link><guid isPermaLink="false">https://tlfbrito.github.io/3-years-at-uniplaces-and-still-counting/</guid><pubDate>Fri, 29 Nov 2019 00:00:00 GMT</pubDate><content:encoded>&lt;p&gt;Next year I’m celebrating 4 years at Uniplaces. I had 3 long, long years that represent an amazing journey in my life.
+There are so many moments I will remember forever, many positive ones, few negative ones, a lot of excitement and
+huge growth, both from a personal and professional perspective.
+There are very few things I regret and I’m honestly proud of that.
+There is one big thank you that goes to the people in our team. They and their passion, willingness,
+and fighting spirit are what makes the tech island a sweet home for me.&lt;/p&gt;
+&lt;p&gt;&lt;span
+      class=&quot;gatsby-resp-image-wrapper&quot;
+      style=&quot;position: relative; display: block; margin-left: auto; margin-right: auto; max-width: 590px; &quot;
+    &gt;
+      &lt;a
+    class=&quot;gatsby-resp-image-link&quot;
+    href=&quot;https://tlfbrito.github.io/static/d6742159c0163095453a59141c9a2c1e/d165a/1.jpg&quot;
+    style=&quot;display: block&quot;
+    target=&quot;_blank&quot;
+    rel=&quot;noopener&quot;
+  &gt;
+    &lt;span
+    class=&quot;gatsby-resp-image-background-image&quot;
+    style=&quot;padding-bottom: 66.89189189189189%; position: relative; bottom: 0; left: 0; background-image: url(&apos;data:image/jpeg;base64,/9j/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wgARCAANABQDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAAAAUD/8QAFwEAAwEAAAAAAAAAAAAAAAAAAAECA//aAAwDAQACEAMQAAABbRdbytoAf//EABsQAAICAwEAAAAAAAAAAAAAAAEDAhEAEBMx/9oACAEBAAEFAlsuAaDpftgHpLP/xAAXEQADAQAAAAAAAAAAAAAAAAAAARIR/9oACAEDAQE/AZWkH//EABcRAQADAAAAAAAAAAAAAAAAAAAREiH/2gAIAQIBAT8BnFn/xAAZEAADAQEBAAAAAAAAAAAAAAAAASERMQL/2gAIAQEABj8CbeQzDhaieTp//8QAGRABAQEBAQEAAAAAAAAAAAAAAREAIWFx/9oACAEBAAE/IWZKpzmcofbrONPmcRSHS5OJV73RCPf/2gAMAwEAAgADAAAAEF/P/8QAFxEBAQEBAAAAAAAAAAAAAAAAAQAhYf/aAAgBAwEBPxBDBcN//8QAFxEBAQEBAAAAAAAAAAAAAAAAAQAhcf/aAAgBAgEBPxAbpuL/xAAaEAEBAQEBAQEAAAAAAAAAAAABEQAhMUGB/9oACAEBAAE/EAK1TwMQkl6on59x4kPW5gPIziG6NjD1uBAib//Z&apos;); background-size: cover; display: block;&quot;
+  &gt;&lt;/span&gt;
+  &lt;img
+        class=&quot;gatsby-resp-image-image&quot;
+        alt=&quot;Team photo 1&quot;
+        title=&quot;Team photo 1&quot;
+        src=&quot;https://tlfbrito.github.io/static/d6742159c0163095453a59141c9a2c1e/1c72d/1.jpg&quot;
+        srcset=&quot;https://tlfbrito.github.io/static/d6742159c0163095453a59141c9a2c1e/a80bd/1.jpg 148w,https://tlfbrito.github.io/static/d6742159c0163095453a59141c9a2c1e/1c91a/1.jpg 295w,https://tlfbrito.github.io/static/d6742159c0163095453a59141c9a2c1e/1c72d/1.jpg 590w,https://tlfbrito.github.io/static/d6742159c0163095453a59141c9a2c1e/a8a14/1.jpg 885w,https://tlfbrito.github.io/static/d6742159c0163095453a59141c9a2c1e/fbd2c/1.jpg 1180w,https://tlfbrito.github.io/static/d6742159c0163095453a59141c9a2c1e/d165a/1.jpg 1400w&quot;
+        sizes=&quot;(max-width: 590px) 100vw, 590px&quot;
+        style=&quot;width:100%;height:100%;margin:0;vertical-align:middle;position:absolute;top:0;left:0;&quot;
+        loading=&quot;lazy&quot;
+      /&gt;
+  &lt;/a&gt;
+    &lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;&lt;span
+      class=&quot;gatsby-resp-image-wrapper&quot;
+      style=&quot;position: relative; display: block; margin-left: auto; margin-right: auto; max-width: 590px; &quot;
+    &gt;
+      &lt;a
+    class=&quot;gatsby-resp-image-link&quot;
+    href=&quot;https://tlfbrito.github.io/static/c2c7b449014fd3672e8174acf2514eb7/d165a/2.jpg&quot;
+    style=&quot;display: block&quot;
+    target=&quot;_blank&quot;
+    rel=&quot;noopener&quot;
+  &gt;
+    &lt;span
+    class=&quot;gatsby-resp-image-background-image&quot;
+    style=&quot;padding-bottom: 75%; position: relative; bottom: 0; left: 0; background-image: url(&apos;data:image/jpeg;base64,/9j/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wgARCAAPABQDASIAAhEBAxEB/8QAFwABAQEBAAAAAAAAAAAAAAAAAwACBP/EABcBAAMBAAAAAAAAAAAAAAAAAAACAwT/2gAMAwEAAhADEAAAAQNcrDpijP8A/8QAGRABAAMBAQAAAAAAAAAAAAAAAQACEQMh/9oACAEBAAEFAvQr1IEsamyph//EABcRAAMBAAAAAAAAAAAAAAAAAAABAhH/2gAIAQMBAT8Bm9Q6rT//xAAYEQEBAAMAAAAAAAAAAAAAAAABAAITUf/aAAgBAgEBPwEBtOXL/8QAGhABAAMAAwAAAAAAAAAAAAAAAQAQESFRkf/aAAgBAQAGPwIQ9Y7tadQ4K//EABsQAQADAQADAAAAAAAAAAAAAAEAESExQXGR/9oACAEBAAE/Ib8AGyCVUkJHK9zoOUNmGio3R+z/2gAMAwEAAgADAAAAEEvf/8QAFxEBAQEBAAAAAAAAAAAAAAAAAQAhEf/aAAgBAwEBPxDRDZ643//EABURAQEAAAAAAAAAAAAAAAAAAAEQ/9oACAECAQE/EGZv/8QAHBABAAMAAwEBAAAAAAAAAAAAAQARITFBUaHB/9oACAEBAAE/EBgnmCgF+xry1y3XWEZFC87J7HSyIGDeV9gINBT1er+xCIK3Qsn/2Q==&apos;); background-size: cover; display: block;&quot;
+  &gt;&lt;/span&gt;
+  &lt;img
+        class=&quot;gatsby-resp-image-image&quot;
+        alt=&quot;Team photo 2&quot;
+        title=&quot;Team photo 2&quot;
+        src=&quot;https://tlfbrito.github.io/static/c2c7b449014fd3672e8174acf2514eb7/1c72d/2.jpg&quot;
+        srcset=&quot;https://tlfbrito.github.io/static/c2c7b449014fd3672e8174acf2514eb7/a80bd/2.jpg 148w,https://tlfbrito.github.io/static/c2c7b449014fd3672e8174acf2514eb7/1c91a/2.jpg 295w,https://tlfbrito.github.io/static/c2c7b449014fd3672e8174acf2514eb7/1c72d/2.jpg 590w,https://tlfbrito.github.io/static/c2c7b449014fd3672e8174acf2514eb7/a8a14/2.jpg 885w,https://tlfbrito.github.io/static/c2c7b449014fd3672e8174acf2514eb7/fbd2c/2.jpg 1180w,https://tlfbrito.github.io/static/c2c7b449014fd3672e8174acf2514eb7/d165a/2.jpg 1400w&quot;
+        sizes=&quot;(max-width: 590px) 100vw, 590px&quot;
+        style=&quot;width:100%;height:100%;margin:0;vertical-align:middle;position:absolute;top:0;left:0;&quot;
+        loading=&quot;lazy&quot;
+      /&gt;
+  &lt;/a&gt;
+    &lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;&lt;span
+      class=&quot;gatsby-resp-image-wrapper&quot;
+      style=&quot;position: relative; display: block; margin-left: auto; margin-right: auto; max-width: 590px; &quot;
+    &gt;
+      &lt;a
+    class=&quot;gatsby-resp-image-link&quot;
+    href=&quot;https://tlfbrito.github.io/static/e2de9da0af23c5ee0028269154776845/d165a/3.jpg&quot;
+    style=&quot;display: block&quot;
+    target=&quot;_blank&quot;
+    rel=&quot;noopener&quot;
+  &gt;
+    &lt;span
+    class=&quot;gatsby-resp-image-background-image&quot;
+    style=&quot;padding-bottom: 75%; position: relative; bottom: 0; left: 0; background-image: url(&apos;data:image/jpeg;base64,/9j/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wgARCAAPABQDASIAAhEBAxEB/8QAGAAAAgMAAAAAAAAAAAAAAAAAAAUBAgP/xAAVAQEBAAAAAAAAAAAAAAAAAAABAv/aAAwDAQACEAMQAAABvguiV4KQf//EABoQAAMBAAMAAAAAAAAAAAAAAAABAgMSEyH/2gAIAQEAAQUCq5SnWU/GVpzEzuqD/8QAFREBAQAAAAAAAAAAAAAAAAAAARD/2gAIAQMBAT8BJ//EABYRAQEBAAAAAAAAAAAAAAAAAAABEf/aAAgBAgEBPwGsr//EABkQAQADAQEAAAAAAAAAAAAAAAARITEBkf/aAAgBAQAGPwK9Y1PUIrx//8QAGhABAQEAAwEAAAAAAAAAAAAAAREAITFRgf/aAAgBAQABPyEOK1Nyxr1pyGukD5qPvRhVPc//2gAMAwEAAgADAAAAEH8f/8QAFhEBAQEAAAAAAAAAAAAAAAAAAQAR/9oACAEDAQE/EAFpf//EABYRAQEBAAAAAAAAAAAAAAAAAAEQEf/aAAgBAgEBPxDSQ//EAB0QAQEAAQQDAAAAAAAAAAAAAAERACExQVFhgeH/2gAIAQEAAT8QrEKTjy5DuYkaDrz1tiyGPRhyTIAgbfcJ7id5gagOBT3n/9k=&apos;); background-size: cover; display: block;&quot;
+  &gt;&lt;/span&gt;
+  &lt;img
+        class=&quot;gatsby-resp-image-image&quot;
+        alt=&quot;Team photo 3&quot;
+        title=&quot;Team photo 3&quot;
+        src=&quot;https://tlfbrito.github.io/static/e2de9da0af23c5ee0028269154776845/1c72d/3.jpg&quot;
+        srcset=&quot;https://tlfbrito.github.io/static/e2de9da0af23c5ee0028269154776845/a80bd/3.jpg 148w,https://tlfbrito.github.io/static/e2de9da0af23c5ee0028269154776845/1c91a/3.jpg 295w,https://tlfbrito.github.io/static/e2de9da0af23c5ee0028269154776845/1c72d/3.jpg 590w,https://tlfbrito.github.io/static/e2de9da0af23c5ee0028269154776845/a8a14/3.jpg 885w,https://tlfbrito.github.io/static/e2de9da0af23c5ee0028269154776845/fbd2c/3.jpg 1180w,https://tlfbrito.github.io/static/e2de9da0af23c5ee0028269154776845/d165a/3.jpg 1400w&quot;
+        sizes=&quot;(max-width: 590px) 100vw, 590px&quot;
+        style=&quot;width:100%;height:100%;margin:0;vertical-align:middle;position:absolute;top:0;left:0;&quot;
+        loading=&quot;lazy&quot;
+      /&gt;
+  &lt;/a&gt;
+    &lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;If you want to be part of our team, don’t forget we are hiring:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;https://careers.uniplaces.com/o/software-engineer-devops-lisbon&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;https://careers.uniplaces.com/o/software-engineer-devops-lisbon&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;https://careers.uniplaces.com/o/software-engineer-fullstack&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;https://careers.uniplaces.com/o/software-engineer-fullstack&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;https://careers.uniplaces.com/o/site-reliability-engineer-sre&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;https://careers.uniplaces.com/o/site-reliability-engineer-sre&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+                &lt;div style=&quot;margin-top=55px; font-style: italic;&quot;&gt;(This is an article from www.tlfbrito.github.io . You can read it online by &lt;a href=&quot;https://tlfbrito.github.io/3-years-at-uniplaces-and-still-counting/&quot;&gt;clicking here&lt;/a&gt;.)&lt;/div&gt;
+              </content:encoded></item><item><title><![CDATA[DynamoDb on Demand Hydrator with Generators]]></title><description><![CDATA[If you are familiar with AWS DynamoDB client for PHP they already do the hard work of handling multiple paginated results using the ResultPaginator.]]></description><link>https://tlfbrito.github.io/dynamodb-on-demand-hydrator-with-generators/</link><guid isPermaLink="false">https://tlfbrito.github.io/dynamodb-on-demand-hydrator-with-generators/</guid><pubDate>Sat, 23 Jun 2018 00:00:00 GMT</pubDate><content:encoded>&lt;p&gt;Sometime ago I wrote &lt;a href=&quot;https://tlfbrito.github.io/dynamodb-on-demand-hydrator/&quot;&gt;DynamoDb on Demand Hydrator&lt;/a&gt;, where I show how to implement a
+custom PHP Collection where you receive an iterator and an custom hydrator, each element of the iterator will be then
+hydrated on each collection iteration.
+This implementation, works fine but it requires a custom collection implementation with two dependencies (iterator &amp;#x26; hydrator).
+If you are familiar with AWS DynamoDB client for PHP they already do the hard work of handling multiple paginated
+results using the ResultPaginator.
+This means, that we just need to find a way to “hook” into the iteration process itself and call our hydrator.
+Simple, but not that easy to achieve at first sight.
+Generators in PHP are great for these type of problems. They allow you to yield the field as you iterate and still
+return an Iterator as a return type.&lt;/p&gt;
+&lt;div class=&quot;gatsby-highlight&quot; data-language=&quot;php&quot;&gt;&lt;pre style=&quot;counter-reset: linenumber NaN&quot; class=&quot;language-php line-numbers&quot;&gt;&lt;code class=&quot;language-php&quot;&gt;&lt;span class=&quot;token keyword&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;token class-name&quot;&gt;ExampleRepository&lt;/span&gt; &lt;span class=&quot;token keyword&quot;&gt;extends&lt;/span&gt; &lt;span class=&quot;token class-name&quot;&gt;DynamoDbRepository&lt;/span&gt;
+&lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;token comment&quot;&gt;//more code...&lt;/span&gt;
+    
+    &lt;span class=&quot;token keyword&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;token keyword&quot;&gt;function&lt;/span&gt; &lt;span class=&quot;token function&quot;&gt;getAll&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; iterable
+    &lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;token variable&quot;&gt;$parameters&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;token punctuation&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;token single-quoted-string string&quot;&gt;&apos;TableName&apos;&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$this&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token function&quot;&gt;finalTableName&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;;&lt;/span&gt;
+        &lt;span class=&quot;token variable&quot;&gt;$iterator&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$this&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token function&quot;&gt;client&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token function&quot;&gt;getPaginator&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token single-quoted-string string&quot;&gt;&apos;Scan&apos;&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$parameters&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token function&quot;&gt;search&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token single-quoted-string string&quot;&gt;&apos;Items&apos;&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;;&lt;/span&gt;
+        &lt;span class=&quot;token keyword&quot;&gt;foreach&lt;/span&gt; &lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token variable&quot;&gt;$iterator&lt;/span&gt; &lt;span class=&quot;token keyword&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$item&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;
+            &lt;span class=&quot;token keyword&quot;&gt;yield&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$this&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token function&quot;&gt;hydrator&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token function&quot;&gt;hydrate&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token variable&quot;&gt;$item&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;;&lt;/span&gt;
+        &lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt;
+    &lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;span aria-hidden=&quot;true&quot; class=&quot;line-numbers-rows&quot; style=&quot;white-space: normal; width: auto; left: 0;&quot;&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;The client() call returns a AWS DynamoDB client that will perform our scan, handle the paginated results
+and will perform the requests o DynamoDB as it needs.
+Then, on lines 12–14, we are creating a generator that will iterate and hydrate on demand our results and yield them
+to be iterated over to everyone who call ExampleRepository::getAll() method.
+Note that, as we are using &gt; PHP 7.1 we can define iterable as a return type, which is great because it allow us to
+match our Iterator return type on this ExampleRepository but also would be compliant with anything that could be
+iterable (such as an array) as in an InMemoryRepository implementation for example.
+Another great feature of using AWS DynamoDB ResultPaginator iterator, is that they are compatible with PHP SPL Iterators.
+So if you need to implement a getAll that allow you to limit the amount of the returns returned,
+you can wrap the returned iterator with a \LimitIterator as you can see in the next example:&lt;/p&gt;
+&lt;div class=&quot;gatsby-highlight&quot; data-language=&quot;php&quot;&gt;&lt;pre style=&quot;counter-reset: linenumber NaN&quot; class=&quot;language-php line-numbers&quot;&gt;&lt;code class=&quot;language-php&quot;&gt;&lt;span class=&quot;token keyword&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;token class-name&quot;&gt;ExampleRepository&lt;/span&gt; &lt;span class=&quot;token keyword&quot;&gt;extends&lt;/span&gt; &lt;span class=&quot;token class-name&quot;&gt;DynamoDbRepository&lt;/span&gt;
+&lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;token comment&quot;&gt;//more code...&lt;/span&gt;
+    
+    &lt;span class=&quot;token keyword&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;token keyword&quot;&gt;function&lt;/span&gt; &lt;span class=&quot;token function&quot;&gt;getAll&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;int &lt;span class=&quot;token variable&quot;&gt;$limit&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;token constant&quot;&gt;null&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;:&lt;/span&gt; iterable
+    &lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;token variable&quot;&gt;$parameters&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;token punctuation&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;token single-quoted-string string&quot;&gt;&apos;TableName&apos;&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$this&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token function&quot;&gt;finalTableName&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;;&lt;/span&gt;
+        &lt;span class=&quot;token variable&quot;&gt;$iterator&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$this&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token function&quot;&gt;client&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token function&quot;&gt;getPaginator&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token single-quoted-string string&quot;&gt;&apos;Scan&apos;&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$parameters&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token function&quot;&gt;search&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token single-quoted-string string&quot;&gt;&apos;Items&apos;&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;;&lt;/span&gt;
+        
+        &lt;span class=&quot;token keyword&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token variable&quot;&gt;$limit&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;!=&lt;/span&gt; &lt;span class=&quot;token constant&quot;&gt;null&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;
+            &lt;span class=&quot;token variable&quot;&gt;$iterator&lt;/span&gt; &lt;span class=&quot;token operator&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;token keyword&quot;&gt;new&lt;/span&gt; &lt;span class=&quot;token class-name&quot;&gt;&lt;span class=&quot;token punctuation&quot;&gt;\&lt;/span&gt;LimitIterator&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token variable&quot;&gt;$iterator&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;token number&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$limit&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;;&lt;/span&gt;
+        &lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt;
+
+        &lt;span class=&quot;token keyword&quot;&gt;foreach&lt;/span&gt; &lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token variable&quot;&gt;$iterator&lt;/span&gt; &lt;span class=&quot;token keyword&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$item&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;
+            &lt;span class=&quot;token keyword&quot;&gt;yield&lt;/span&gt; &lt;span class=&quot;token variable&quot;&gt;$this&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token function&quot;&gt;hydrator&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token function&quot;&gt;hydrate&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;token variable&quot;&gt;$item&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;;&lt;/span&gt;
+        &lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt;
+    &lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;span aria-hidden=&quot;true&quot; class=&quot;line-numbers-rows&quot; style=&quot;white-space: normal; width: auto; left: 0;&quot;&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;This approach have proven to be not just very efficient in memory but also allow us to process items in a
+more dispersed way and thereafter distribute the consumed capacity units through time.
+&lt;span
+      class=&quot;gatsby-resp-image-wrapper&quot;
+      style=&quot;position: relative; display: block; margin-left: auto; margin-right: auto; max-width: 590px; &quot;
+    &gt;
+      &lt;a
+    class=&quot;gatsby-resp-image-link&quot;
+    href=&quot;https://tlfbrito.github.io/static/9bf69896c616864de8426ca2b19bac72/5b587/cloudwatch-metrics.png&quot;
+    style=&quot;display: block&quot;
+    target=&quot;_blank&quot;
+    rel=&quot;noopener&quot;
+  &gt;
+    &lt;span
+    class=&quot;gatsby-resp-image-background-image&quot;
+    style=&quot;padding-bottom: 55.4054054054054%; position: relative; bottom: 0; left: 0; background-image: url(&apos;data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAALCAIAAADwazoUAAAACXBIWXMAAAsSAAALEgHS3X78AAABgklEQVQoz4VR2XLjIBDU/3/eJk45Oi3bkrhtBDoAATtgbypv2wWjYY7uERRN09ZVVZUV2PK7bOrm6/Q1TWhZFq1hp6VfULCXt6O04KJo2+70efr483E+n4EIACx930/j2DZNXdWwLt2l76/DfQDqS9fdbreyLOFYUMqmDM75PEulVNbUUkqMEMopjAlj7Pl8QoRSKoQACzXFrFTMsIdP1jnxeAjOvffxfyieUqa6EDbjNhf8qg0ejXM+I4SQbPq+8Qq+nNQMHtA4H7RaYl9HZxNtrog59Qsh/IuA81YOecqFiwNPkAwv2RgP7zFlhBCEEaHUOQfBn4kKOc+JJpPp3R3+l5S1x76PTQV3Nozj0PfOmni48KMs5eyB0Biw67qt6x6PBAO/05a+q8J4T7XXNjLkmm+7rjHfZWqeZwWdm1Jm0ZvWCHNKGGWCT4jdBgaWMIIpvV7pOIn7QOhDSQUzg2Khl3V7PAhCPebwmtu27SYBcru1xlpn7W4N+JBIBziaN/4CV+Vyx7M5no4AAAAASUVORK5CYII=&apos;); background-size: cover; display: block;&quot;
+  &gt;&lt;/span&gt;
+  &lt;img
+        class=&quot;gatsby-resp-image-image&quot;
+        alt=&quot;CloudWatch DynamoDB Metrics&quot;
+        title=&quot;CloudWatch DynamoDB Metrics&quot;
+        src=&quot;https://tlfbrito.github.io/static/9bf69896c616864de8426ca2b19bac72/fcda8/cloudwatch-metrics.png&quot;
+        srcset=&quot;https://tlfbrito.github.io/static/9bf69896c616864de8426ca2b19bac72/12f09/cloudwatch-metrics.png 148w,https://tlfbrito.github.io/static/9bf69896c616864de8426ca2b19bac72/e4a3f/cloudwatch-metrics.png 295w,https://tlfbrito.github.io/static/9bf69896c616864de8426ca2b19bac72/fcda8/cloudwatch-metrics.png 590w,https://tlfbrito.github.io/static/9bf69896c616864de8426ca2b19bac72/efc66/cloudwatch-metrics.png 885w,https://tlfbrito.github.io/static/9bf69896c616864de8426ca2b19bac72/5b587/cloudwatch-metrics.png 1010w&quot;
+        sizes=&quot;(max-width: 590px) 100vw, 590px&quot;
+        style=&quot;width:100%;height:100%;margin:0;vertical-align:middle;position:absolute;top:0;left:0;&quot;
+        loading=&quot;lazy&quot;
+      /&gt;
+  &lt;/a&gt;
+    &lt;/span&gt;&lt;/p&gt;
+&lt;hr&gt;
+                &lt;div style=&quot;margin-top=55px; font-style: italic;&quot;&gt;(This is an article from www.tlfbrito.github.io . You can read it online by &lt;a href=&quot;https://tlfbrito.github.io/dynamodb-on-demand-hydrator-with-generators/&quot;&gt;clicking here&lt;/a&gt;.)&lt;/div&gt;
+              </content:encoded></item><item><title><![CDATA[Validate Stripe webhooks with Symfony]]></title><description><![CDATA[If you are familiar with AWS DynamoDB client for PHP they already do the hard work of handling multiple paginated results using the ResultPaginator.]]></description><link>https://tlfbrito.github.io/validate-stripe-webhooks-with-symfony/</link><guid isPermaLink="false">https://tlfbrito.github.io/validate-stripe-webhooks-with-symfony/</guid><pubDate>Wed, 05 Jul 2017 00:00:00 GMT</pubDate><content:encoded>&lt;p&gt;Recently we have changed our payment system at &lt;a href=&quot;https://www.uniplaces.com&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;Uniplaces&lt;/a&gt;. Some of payment providers are asynchronous to confirm the
+payment charge (e.g. bank transfers). To handle this asynchronous process we rely on Stripe webhooks to confirm payments.
+When we receive a payment confirmation we need to be sure that the request is actually coming from Stripe and not from
+somewhere else trying to confirm a payment that didn’t exist. To archive this, we needed to add an extra security layer
+to validate all the webhooks requests.&lt;/p&gt;
+&lt;p&gt;Usually, you would use a Middleware (e.g. &lt;a href=&quot;https://laravel.com/docs/5.4/middleware&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;Laravel middleware&lt;/a&gt;,
+&lt;a href=&quot;https://golang.org/pkg/net/http/#HandleFunc&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;HandlerFunc in Golang&lt;/a&gt;, etc) to tackle this type of problems.
+Symfony doesn’t use middleware architecture, instead, it uses Kernel Events
+to allow developers to hook into the Request-&gt;Response workflow.&lt;/p&gt;
+&lt;p&gt;&lt;span
+      class=&quot;gatsby-resp-image-wrapper&quot;
+      style=&quot;position: relative; display: block; margin-left: auto; margin-right: auto; max-width: 590px; &quot;
+    &gt;
+      &lt;a
+    class=&quot;gatsby-resp-image-link&quot;
+    href=&quot;https://tlfbrito.github.io/static/3abd6edaf946feeb3fc7f786f19dfe29/1e043/symfony-request-lifecyle-workflow.png&quot;
+    style=&quot;display: block&quot;
+    target=&quot;_blank&quot;
+    rel=&quot;noopener&quot;
+  &gt;
+    &lt;span
+    class=&quot;gatsby-resp-image-background-image&quot;
+    style=&quot;padding-bottom: 60.13513513513513%; position: relative; bottom: 0; left: 0; background-image: url(&apos;data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAMCAIAAADtbgqsAAAACXBIWXMAAAsSAAALEgHS3X78AAABuklEQVQoz3VSTW/TQBD1b+PM/+EncOHGAVSpEr0AFzhQlUogIi6RUFukVE1EKrUlpE3sOo7jxt6PmdnZZdYmkIJ4Xu2ud97M7L6ZBDbQRmmriNBtgeVrQRvAFpJuQcRlnWXVDw2NZ8/iJJCVN0GcE47WmmTBLWf5cyQ2QIKWBI2qlW5kWDDdXSRnayJjQXbR1ULSmiQweXZekgZJGMnsItsHOYyEzqoMzRbyOmRisJiAM7JB8sqSd4Hr4MGLE3LwHEIT2ASBMjEEIlciixCjr01eHT/5MNo97Ke7n9Lz99nbB6Phzvzdl9mzg5vh0e3Bw3H/0eSmuHv65rI/LC9T/Xw/G15fvT55fDjaS77dHk1XZ5MMTqem+m5Ge1kxaK4WMJjYMrfjl+m0t9JAnwfldY7zct07LRbr+izrjfPjJPjQDnktBe/jFUM338MszZgDOG2p6igiQgIo6sUCIlGsKnWV7WrFhCIfW/QvPhZfL0qFeW1q0XF5p5dVE0v1q/wiuPf8D+RIwl7MqVgLQXII3+Urs1jpP02ijLIioTSBENzfIwQUsYGiyLhB8rvXlI7O7j+IF4thcLs9fwKwcqwlvmzENQAAAABJRU5ErkJggg==&apos;); background-size: cover; display: block;&quot;
+  &gt;&lt;/span&gt;
+  &lt;img
+        class=&quot;gatsby-resp-image-image&quot;
+        alt=&quot;Request -&amp;gt; Response workflow&quot;
+        title=&quot;Request -&amp;gt; Response workflow&quot;
+        src=&quot;https://tlfbrito.github.io/static/3abd6edaf946feeb3fc7f786f19dfe29/fcda8/symfony-request-lifecyle-workflow.png&quot;
+        srcset=&quot;https://tlfbrito.github.io/static/3abd6edaf946feeb3fc7f786f19dfe29/12f09/symfony-request-lifecyle-workflow.png 148w,https://tlfbrito.github.io/static/3abd6edaf946feeb3fc7f786f19dfe29/e4a3f/symfony-request-lifecyle-workflow.png 295w,https://tlfbrito.github.io/static/3abd6edaf946feeb3fc7f786f19dfe29/fcda8/symfony-request-lifecyle-workflow.png 590w,https://tlfbrito.github.io/static/3abd6edaf946feeb3fc7f786f19dfe29/1e043/symfony-request-lifecyle-workflow.png 690w&quot;
+        sizes=&quot;(max-width: 590px) 100vw, 590px&quot;
+        style=&quot;width:100%;height:100%;margin:0;vertical-align:middle;position:absolute;top:0;left:0;&quot;
+        loading=&quot;lazy&quot;
+      /&gt;
+  &lt;/a&gt;
+    &lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;The &lt;a href=&quot;http://symfony.com/doc/current/components/http_kernel.html&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;HttpKernel component&lt;/a&gt; provides an interface that formalizes the process of starting with a request and
+creating the appropriate response.&lt;/p&gt;
+&lt;p&gt;Internally this handle function is responsible for transforming the Request into the Response following the
+previous workflow. In each step, Symfony will dispatch an event that can be listened by multiple listeners.&lt;/p&gt;
+&lt;h3 id=&quot;stripe-request-subscriber&quot;&gt;&lt;a href=&quot;#stripe-request-subscriber&quot; aria-hidden class=&quot;anchor&quot;&gt;&lt;svg aria-hidden=&quot;true&quot; height=&quot;16&quot; version=&quot;1.1&quot; viewBox=&quot;0 0 16 16&quot; width=&quot;16&quot;&gt;&lt;path fill-rule=&quot;evenodd&quot; d=&quot;M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/a&gt;Stripe Request Subscriber&lt;/h3&gt;
+&lt;p&gt;Our task is simple. Create our listener to validate Stripe requests and subscribe it to correct kernel event.
+As Symfony documentation describe in their website for
+&lt;a href=&quot;http://symfony.com/doc/current/components/http_kernel.html#the-kernel-request-event&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;kernel.request event&lt;/a&gt;:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;Typical Purposes: To add more information to the Request, initialize parts of the system, or return a Response
+if possible (e.g. a security layer that denies access).&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;This is a perfect fit for our use case because, we want to deny access for requests that don’t come from Stripe.
+Lets create our Subscriber and subscribe it to &lt;code class=&quot;language-text&quot;&gt;KernelEvents::REQUEST&lt;/code&gt; Event and define what method do we what to execute
+&lt;code class=&quot;language-text&quot;&gt;onKernelRequest()&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Behind the scenes, the &lt;code class=&quot;language-text&quot;&gt;validateWebhook()&lt;/code&gt; implementation is using the &lt;code class=&quot;language-text&quot;&gt;\Stripe\Webhook::constructEvent&lt;/code&gt; from
+&lt;a href=&quot;https://stripe.com/docs/webhooks#verify-official-libraries&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;Stripe SDK&lt;/a&gt; to validate the request header signature.&lt;/p&gt;
+&lt;hr&gt;
+                &lt;div style=&quot;margin-top=55px; font-style: italic;&quot;&gt;(This is an article from www.tlfbrito.github.io . You can read it online by &lt;a href=&quot;https://tlfbrito.github.io/validate-stripe-webhooks-with-symfony/&quot;&gt;clicking here&lt;/a&gt;.)&lt;/div&gt;
+              </content:encoded></item><item><title><![CDATA[DynamoDb OnDemand Hydrator]]></title><description><![CDATA[At Uniplaces we use a DynamoDB as our main database. DynamoDB is NoSQL and distributed database from Amazon webservices that automatically spreads the data and traffic for the table over a sufficient number of servers to handle the request capacity specified by the customer and the amount of data stored, while maintaining consistent and fast performance.]]></description><link>https://tlfbrito.github.io/dynamodb-on-demand-hydrator/</link><guid isPermaLink="false">https://tlfbrito.github.io/dynamodb-on-demand-hydrator/</guid><pubDate>Fri, 27 Jan 2017 00:00:00 GMT</pubDate><content:encoded>&lt;p&gt;At Uniplaces we use a DynamoDB as our main database. DynamoDB is NoSQL and distributed database from Amazon webservices
+that automatically spreads the data and traffic for the table over a sufficient number of servers to handle the request
+capacity specified by the customer and the amount of data stored, while maintaining consistent and fast performance.
+But, as everything in engineering, DynamoDB and other distributed databases come with lots of trade-offs.&lt;/p&gt;
+&lt;hr/&gt;
+&lt;h3 id=&quot;the-problem&quot;&gt;&lt;a href=&quot;#the-problem&quot; aria-hidden class=&quot;anchor&quot;&gt;&lt;svg aria-hidden=&quot;true&quot; height=&quot;16&quot; version=&quot;1.1&quot; viewBox=&quot;0 0 16 16&quot; width=&quot;16&quot;&gt;&lt;path fill-rule=&quot;evenodd&quot; d=&quot;M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/a&gt;The problem:&lt;/h3&gt;
+&lt;p&gt;As a startup we started with the &lt;a href=&quot;https://en.wikipedia.org/wiki/KISS_principle&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener noreferrer&quot;&gt;KISS&lt;/a&gt; principle:
+To get a collection of items or scan an entire table we just had to ask the data to DyanmoDB and then we hydrate each
+of the items to a Domain object. This worked, and everyone was happy. At least for a while. Like Uniplaces, those tables
+grow (a lot!) and after some time, we started to notice two problems:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Big scans can exceed our throughput.
+&lt;span
+      class=&quot;gatsby-resp-image-wrapper&quot;
+      style=&quot;position: relative; display: block; margin-left: auto; margin-right: auto; max-width: 590px; &quot;
+    &gt;
+      &lt;a
+    class=&quot;gatsby-resp-image-link&quot;
+    href=&quot;https://tlfbrito.github.io/static/d7d56e72e7075a9956820d06f690aabf/b5a09/scan-1.png&quot;
+    style=&quot;display: block&quot;
+    target=&quot;_blank&quot;
+    rel=&quot;noopener&quot;
+  &gt;
+    &lt;span
+    class=&quot;gatsby-resp-image-background-image&quot;
+    style=&quot;padding-bottom: 51.35135135135135%; position: relative; bottom: 0; left: 0; background-image: url(&apos;data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAKCAIAAAA7N+mxAAAACXBIWXMAAAsSAAALEgHS3X78AAAA5klEQVQoz5VR224EIQj1/z+yl2Q23Z2bIqjgbcrUh2760E4JIQflCBxNKaX3flwzKbU9FZt/kV046QoGw4hIa/rcHzYabpiUrdzBMLXWKz3HbDOylPY9tjAnAEEUJPF0RvrpTJQDOQuv04LgFfNXvam6tIjGX7zk0mtdILw9XGJpepSzBjMWvjLzgvy+Uq5PY+dSdwyYcuDiKKkrhsC7DxDFBd6ANKWUbxu+3J0K7qOsQApOwT6mG8WodfO6AWLrB0u24PVXSuvWgaa1HyFGJNLbs58Dld2o6v7+sPs2zVbJKcXjsn0CxEFKunEso58AAAAASUVORK5CYII=&apos;); background-size: cover; display: block;&quot;
+  &gt;&lt;/span&gt;
+  &lt;img
+        class=&quot;gatsby-resp-image-image&quot;
+        alt=&quot;Scan Example&quot;
+        title=&quot;Scan Example&quot;
+        src=&quot;https://tlfbrito.github.io/static/d7d56e72e7075a9956820d06f690aabf/fcda8/scan-1.png&quot;
+        srcset=&quot;https://tlfbrito.github.io/static/d7d56e72e7075a9956820d06f690aabf/12f09/scan-1.png 148w,https://tlfbrito.github.io/static/d7d56e72e7075a9956820d06f690aabf/e4a3f/scan-1.png 295w,https://tlfbrito.github.io/static/d7d56e72e7075a9956820d06f690aabf/fcda8/scan-1.png 590w,https://tlfbrito.github.io/static/d7d56e72e7075a9956820d06f690aabf/efc66/scan-1.png 885w,https://tlfbrito.github.io/static/d7d56e72e7075a9956820d06f690aabf/c83ae/scan-1.png 1180w,https://tlfbrito.github.io/static/d7d56e72e7075a9956820d06f690aabf/b5a09/scan-1.png 1360w&quot;
+        sizes=&quot;(max-width: 590px) 100vw, 590px&quot;
+        style=&quot;width:100%;height:100%;margin:0;vertical-align:middle;position:absolute;top:0;left:0;&quot;
+        loading=&quot;lazy&quot;
+      /&gt;
+  &lt;/a&gt;
+    &lt;/span&gt;&lt;/li&gt;
+&lt;li&gt;During the hydration process: the cost of hydrating 1 item or 100000 + 1 was exponential and not linear as expected.
+&lt;span
+      class=&quot;gatsby-resp-image-wrapper&quot;
+      style=&quot;position: relative; display: block; margin-left: auto; margin-right: auto; max-width: 590px; &quot;
+    &gt;
+      &lt;a
+    class=&quot;gatsby-resp-image-link&quot;
+    href=&quot;https://tlfbrito.github.io/static/9466e3bc6ad5466efc0ea867e0ebd16d/7bf07/memory-limit.png&quot;
+    style=&quot;display: block&quot;
+    target=&quot;_blank&quot;
+    rel=&quot;noopener&quot;
+  &gt;
+    &lt;span
+    class=&quot;gatsby-resp-image-background-image&quot;
+    style=&quot;padding-bottom: 8.108108108108107%; position: relative; bottom: 0; left: 0; background-image: url(&apos;data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAACCAIAAADXZGvcAAAACXBIWXMAAAsSAAALEgHS3X78AAAAVElEQVQI122KUQrAIAxDdXY/zqmjFaPi7n/MFf1dCOGRxLgfkbX22HJuxWqJNuqqfBIZZvbeFyljDNRagTnfEC4WyflJKYmU3jsAPWjZgDtGtKb+AM2bBZThqor/AAAAAElFTkSuQmCC&apos;); background-size: cover; display: block;&quot;
+  &gt;&lt;/span&gt;
+  &lt;img
+        class=&quot;gatsby-resp-image-image&quot;
+        alt=&quot;Any Rating&quot;
+        title=&quot;Any Rating&quot;
+        src=&quot;https://tlfbrito.github.io/static/9466e3bc6ad5466efc0ea867e0ebd16d/fcda8/memory-limit.png&quot;
+        srcset=&quot;https://tlfbrito.github.io/static/9466e3bc6ad5466efc0ea867e0ebd16d/12f09/memory-limit.png 148w,https://tlfbrito.github.io/static/9466e3bc6ad5466efc0ea867e0ebd16d/e4a3f/memory-limit.png 295w,https://tlfbrito.github.io/static/9466e3bc6ad5466efc0ea867e0ebd16d/fcda8/memory-limit.png 590w,https://tlfbrito.github.io/static/9466e3bc6ad5466efc0ea867e0ebd16d/efc66/memory-limit.png 885w,https://tlfbrito.github.io/static/9466e3bc6ad5466efc0ea867e0ebd16d/7bf07/memory-limit.png 1128w&quot;
+        sizes=&quot;(max-width: 590px) 100vw, 590px&quot;
+        style=&quot;width:100%;height:100%;margin:0;vertical-align:middle;position:absolute;top:0;left:0;&quot;
+        loading=&quot;lazy&quot;
+      /&gt;
+  &lt;/a&gt;
+    &lt;/span&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;On the first point, we were requesting a huge amount of data in a same short period of time, making our consumed
+capacity overtake our provisioned capacity.
+The second problem is a little bit more complex. Its was the outcome of a slow hydration for big sets and in worst
+cases resulted in an “Allowed memory size … exhausted” error. Every time we fetched data, we were allocating the full
+dataset and building the same representation in objects, this process was slow and require a huge amount of system resources.&lt;/p&gt;
+&lt;hr/&gt;
+&lt;p&gt;At this point was obvious that we were handling scans in the wrong way and we needed to come up with a solution.
+Lucky, the new AWS SDK for PHP return an Iterator that automatic handles paginated results, and will perform the necessary requests of new items when the next() is called. In this example, I called it OnDemandCollection.&lt;/p&gt;
+&lt;p&gt;This technique allow us to reduce the amount of memory and also scatter the consumed capacity along each iteration.&lt;/p&gt;
+&lt;p&gt;&lt;sup&gt;If you love filters as we do, you probably want to check &lt;a href=&quot;https://tlfbrito.github.io/house-rules-on-search/&quot;&gt;House rules on search&lt;/a&gt;.&lt;/sup&gt; &lt;/p&gt;
+&lt;hr&gt;
+                &lt;div style=&quot;margin-top=55px; font-style: italic;&quot;&gt;(This is an article from www.tlfbrito.github.io . You can read it online by &lt;a href=&quot;https://tlfbrito.github.io/dynamodb-on-demand-hydrator/&quot;&gt;clicking here&lt;/a&gt;.)&lt;/div&gt;
+              </content:encoded></item></channel></rss>
