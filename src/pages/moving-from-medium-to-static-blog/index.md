@@ -12,7 +12,7 @@ tags:
 After a couple of years using Medium as my blog, I decided to move away from Medium and 
 use [Gatsby](https://www.gatsbyjs.org) (a static website generator).
 
-My main issues with Medium were:
+#### Main issues with Medium were:
 * Limited articles readers can access.
 * No code highlight for code-snippets (I always thought this was something that Medium would fix with the time), 
 the only alternative was using [Github Gists](https://gist.github.com) but this means that I need to create a Gist 
@@ -20,7 +20,8 @@ for every code-snippet that I wanted to show.
 * Internet access was require to write a build my articles.
 
 After checking some alternatives, I ended up considering Gatsby as a really good alternative for the job.
-Main advantages of using Gatsby:
+
+#### Main advantages of using Gatsby:
 * Free hosting using multiples hosting solutions: Github Pages (I'm using this), Netlify and more...
 * Static generated (no need for a server to render the pages) during build time.
 * I can compose and write articles without internet connection using markdown and view the final 
@@ -28,7 +29,8 @@ result in my local environment
 * Advance code highlight - I'm using syntax theme based on https://github.com/sdras/night-owl-vscode-theme/ 
 
 Example: 
-```php
+
+```php{1-2,22}{numberLines: true}
 class DynamoDbMessageRepository implements MessageRepository
 {
     /**
